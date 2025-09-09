@@ -1,105 +1,29 @@
 import streamlit as st
 import google.generativeai as genai
-import os
-import time
-from dotenv import load_dotenv
-from PIL import Image, UnidentifiedImageError
+from PIL import Image
 
-# Load environment variables
-load_dotenv()
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+# Configure API key from Streamlit Secrets
+genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 
-st.set_page_config(page_title="Multimodal Weather Q&A", page_icon="🌤️")
+st.set_page_config(page_title="Weather Multimodal App", layout="wide")
 
-st.title("🌤️ Multimodal Weather Q&A (Gemini)")
+st.title("🌦️ Weather Multimodal Q&A")
+st.write("Upload an image and optionally ask a weather-related question.")
 
-# --- Initialize session state ---
-if "messages" not in st.session_state:
-    st.session_state.messages = []  # Stores conversation
-if "image" not in st.session_state:
-    st.session_state.image = None   # Stores uploaded image
-
-# --- Config ---
-MAX_FILE_SIZE_MB = 5
-SYSTEM_PROMPT = "You are a helpful weather assistant. Analyze the uploaded image and answer questions clearly."
-
-
-# --- Sidebar controls ---
-st.sidebar.header("⚙️ Model Settings")
-temperature = st.sidebar.slider("Temperature", 0.0, 2.0, 0.7, 0.1)
-top_k = st.sidebar.slider("Top-K Sampling", 1, 50, 40, 1)
-show_prompt = st.sidebar.checkbox("Show system prompt", value=False)
-
-
-# --- File upload ---
+# Upload image
 uploaded_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
+user_prompt = st.text_input("Ask something about the image (optional):")
 
 if uploaded_file:
-    file_size_mb = len(uploaded_file.getvalue()) / (1024 * 1024)
-    if file_size_mb > MAX_FILE_SIZE_MB:
-        st.error(f"❌ File too large: {file_size_mb:.2f} MB. Please upload under {MAX_FILE_SIZE_MB} MB.")
-        st.session_state.image = None
-    else:
-        try:
-            image = Image.open(uploaded_file)
-            st.image(image, caption="Uploaded Image", use_column_width=True)
-            st.session_state.image = image
-            st.session_state.messages = []  # Reset history on new image
-        except UnidentifiedImageError:
-            st.error("❌ Invalid image file. Please upload a valid JPG or PNG.")
-            st.session_state.image = None
+    image = Image.open(uploaded_file)
+    st.image(image, caption="Uploaded Image", use_container_width=True)
 
+    model = genai.GenerativeModel("gemini-1.5-flash")
 
-# --- User input ---
-user_question = st.text_input("Ask a question about the image", placeholder="e.g., Does it look cloudy?")
+    # Send image + optional text prompt
+    response = model.generate_content(
+        [user_prompt, image] if user_prompt else [image]
+    )
 
-
-# --- Ask button ---
-if st.button("Ask"):
-    if st.session_state.image is None:
-        st.warning("⚠️ Please upload a valid image first.")
-    elif not user_question.strip():
-        st.warning("⚠️ Please enter a question.")
-    else:
-        try:
-            model = genai.GenerativeModel(
-                "gemini-1.5-flash",
-                generation_config={
-                    "temperature": temperature,
-                    "top_k": top_k,
-                },
-            )
-
-            # Add question to history
-            st.session_state.messages.append({"role": "user", "content": user_question})
-
-            with st.spinner("Analyzing..."):
-                start_time = time.time()
-                response = model.generate_content(
-                    [SYSTEM_PROMPT] + [m["content"] for m in st.session_state.messages] + [st.session_state.image]
-                )
-                end_time = time.time()
-
-            answer = response.text
-            st.session_state.messages.append({"role": "assistant", "content": answer})
-
-            # Show response time
-            st.success(f"✅ Response generated in {end_time - start_time:.2f} seconds.")
-
-        except Exception as e:
-            st.error(f"❌ API error: {str(e)}")
-
-
-# --- Show conversation history ---
-if st.session_state.messages:
-    st.subheader("Conversation")
-    for msg in st.session_state.messages:
-        if msg["role"] == "user":
-            st.markdown(f"**🧑 You:** {msg['content']}")
-        else:
-            st.markdown(f"**🤖 Gemini:** {msg['content']}")
-
-# --- Show system prompt ---
-if show_prompt:
-    st.sidebar.subheader("📜 Current System Prompt")
-    st.sidebar.code(SYSTEM_PROMPT, language="markdown")
+    st.subheader("🔍 Answer")
+    st.write(response.text)
