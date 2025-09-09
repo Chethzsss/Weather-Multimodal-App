@@ -3,3 +3,7 @@ pypdf
 huggingface-hub
 faiss-cpu
 google-generativeai
+streamlit
+google-generativeai
+python-dotenv
+Pillow
